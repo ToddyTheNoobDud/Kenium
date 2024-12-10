@@ -22,52 +22,34 @@ const Launcher = {
         });
         return modules;
     })(),
-
     getVersionInfo(indentation = "\t", vanity = true) {
-        console.log("Generating version info...");
-        const gitRepoState = new GitRepoState();
-
         let infoString = '';
         if (vanity) {
             infoString += this.getVanity() + '\n';
         }
-        if (!gitRepoState.isLoaded) {
-            infoString += `${indentation}*** Unable to find or load Git metadata ***\n`;
-        }
-        if (gitRepoState.isLoaded) {
-            infoString += `${indentation}Branch:         ${gitRepoState.branch}\n`;
-            infoString += `${indentation}Commit:         ${gitRepoState.commitIdAbbrev}\n`;
-        }
         infoString += `${indentation}Node.js:       ${process.version}\n`;
         return infoString;
     },
-
     getVanity() {
-        console.log("Generating vanity art...");
-        const red = "\x1b[31m";  // ANSI color codes
-        const green = "\x1b[32m";
-        const defaultC = "\x1b[0m";
         let vanity = 
             "g       .  r _                  _ _       _    g__ _ _\n" +
             "g      /\\\\ r| | __ ___   ____ _| (_)_ __ | | __g\\ \\ \\ \\\n" +
             "g     ( ( )r| |/ _` \\ \\ / / _` | | | '_ \\| |/ /g \\ \\ \\ \\\n" +
-            "g      \\\\/ r| | (_| |\\ V / (_| | | | | | |   < g  ) ) ) )\n" +
+            "g      \\/ r| | (_| |\\ V / (_| | | | | | |   < g  ) ) ) )\n" +
             "g       '  r|_|\\__,_| \\_/ \\__,_|_|_|_| |_|_|\\_\\g / / / /\n" +
             "d    =========================================g/_/_/_/d";
-        vanity = vanity.replace(/r/g, red).replace(/g/g, green).replace(/d/g, defaultC);
+        vanity = vanity.replace(/r/g, "\x1b[31m").replace(/g/g, "\x1b[32m").replace(/d/g, "\x1b[0m");
         return vanity;
     },
-
-    main(args) {
+    main: async function(args) {
         console.log("Starting main function...");
         if (args.length > 0 && (args[0].toLowerCase() === '-v' || args[0].toLowerCase() === '--version')) {
             console.log(this.getVersionInfo("", false));
             return;
         }
-        const parent = this.launchPluginBootstrap();
-        this.launchMain(parent, args);
+        const parent = await this.launchPluginBootstrap();
+        await this.launchMain(parent, args);
     },
-
     /**
      * Starts the plugin manager and returns the initialized instance
      *
@@ -75,33 +57,31 @@ const Launcher = {
      *
      * @returns {PluginManager} The initialized plugin manager
      */
-    launchPluginBootstrap() {
+    async launchPluginBootstrap() {
         console.log("Initializing Plugin Manager...");
         const pluginManager = new PluginManager();
-        pluginManager.init(); // Assuming start method initializes the plugin manager
+        await pluginManager.init(); // Make sure this is awaited if it returns a promise
         console.log("Plugin Manager initialized.");
-        return pluginManager; // Return the initialized plugin manager
+        return pluginManager;
     },
-
-    launchMain(parent, args) {
+    async launchMain(parent, args) {
         console.log("Launching main application...");
         const app = express();
-        const pluginManager = parent; // Use the instance of PluginManager
-        const properties = {
-            componentScan: pluginManager.pluginManifests.map(manifest => manifest.path).concat('lavalink.server')
-        };
-
         // Set up application routes, middleware, etc.
         app.get('/', (req, res) => {
             res.send('Lavalink Application is running!');
         });
-
         // Start the server
         const PORT = process.env.PORT || 3000;
-        app.listen(PORT, () => {
+        app.listen(PORT, (err) => {
+            if (err) {
+                this.log.error("Error starting server: ", err);
+                return;
+            }
             this.log.info(this.getVersionInfo());
             this.log.info("Lavalink is ready to accept connections on port " + PORT);
         });
+        // Remove the blocking promise
         console.log("Application started on port " + PORT);
     }
 };
@@ -113,7 +93,11 @@ module.exports = { LavalinkApplication, Launcher };
 if (require.main === module) {
     console.log("Application entry point...");
     const args = process.argv.slice(2);
-    Launcher.main(args);
-    console.log("Application execution finished.");
+    Launcher.main(args)
+        .then(() => {
+            console.log("Application execution finished.");
+        })
+        .catch(err => {
+            console.error("Error during application execution:", err);
+        });
 }
-
